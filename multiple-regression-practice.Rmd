@@ -1,0 +1,185 @@
+---
+title: "Multi-Variate Regression"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, 
+                      warning=FALSE,
+                      message=FALSE)
+```
+
+## Introduction
+
+Using housing data from the `Ecdat` package, I will begin with simple linear regression, move into a multivariate linear regression analysis, and explore the impact of interaction terms between predictive variables and how that can help us improve our model's performance.
+
+This analysis is based on knowledge gained from a presentation by **[Jennifer Glenski](https://www.linkedin.com/in/jenny-glenski/)** entitled "Building More Realistic Regression Models" at the *Lesbians Who Tech* Pride Summit 2022. Thank you Jenny!
+
+
+
+## Simple Linear Regression
+
+Let's start with loading our packages and data and creating a simple linear regression model with one predictor variable. 
+
+```{r}
+# install.packages("dplyr")
+# install.packages("ggplot2")
+
+# install.packages("Ecdat")
+# if (!require(Ecdat)) install.packages("Ecdat")
+
+library(dplyr)
+library(ggplot2)
+library(Ecdat)
+library(MASS)
+
+```
+
+We will load a Housing dataset from the Ecdat package to work with.
+```{r}
+glimpse(Housing)
+
+#Save a copy of the Ecdat Housing dataset to work with
+Housing = Housing
+
+```
+
+We have several variables in the Housing data set. For example, we have the price of a house; the lotsize; number of bedrooms, bathrooms, and stories; and whether or not the house has a full basement, recreation room, or a driveway. 
+
+We will begin with creating a simple linear regression model with price as the response variable, and the lotsize as the single predictor and plotting the results.
+```{r}
+
+simple.lm = lm(formula = price ~ lotsize, data = Housing)
+summary(simple.lm)
+
+```
+
+Next, let's plot the results.
+```{r}
+# Create a scatter plot of price (y) as a function of lotsize (x)
+ggplot(Housing, aes(x=lotsize, y=price)) + 
+  geom_point() +           # Add the data points
+  geom_smooth(method=lm,   # Add the linear regression line to the plot
+              se=FALSE,    # Don't add the confidence region for the regression line
+              fullrange=TRUE)   # Extend the regression lines to the full x axis range
+
+```
+
+How well does our simple linear regression model fit and represent our data?
+
+```{r}
+# Use plot to check residuals of the simple linear regression model
+plot(simple.lm)
+
+```
+
+
+Our adjusted R-squared value is 0.2858 (which is low), and our residuals appear to have a trend (indicating that lotsize alone may not fully capture the relationship between a house's features and it's price).
+
+Let's see if we can improve this model using multiple predictors.
+
+
+## Multiple Linear Regression
+
+First, we'll build a linear regression model with two predictors: lotsize and bedrooms.
+
+```{r}
+multiple.lm = lm(formula = price ~ lotsize+bedrooms, data = Housing)
+summary(multiple.lm) 
+
+```
+Note that adding the number of bedrooms to our linear model increased our adjusted R-squared value to 0.3679. This value is an improvement over the single variable model, showing that this multivariate model does fit the data better, but an adjusted R-squared value pf 0.3679 is still pretty low. Let's keep going -- but where?
+
+### Variable Selection
+
+So we want to add more variables in order to improve our correlation power. But which variables should we use? According to Jennifer Glansky ("Building More Realistic Regression Models", 2022), we should keep the following principles in mind. 
+
+**When building a multiple linear regression model, you should consider including:**
+
+1. Predictors that are related to the outcome (other literature, etc.?)
+2. Predictors that can be considered the cause of the outcome
+3. Interaction terms of variables that have large effects (talk about below)
+
+**And try to avoid, or be cautious about:**
+
+1. Predictors that are missing a lot of values, or have low variability
+2. Predictors that are highly correlated with other predictors in the model (issues of co-linearity)
+3. Predictors that are not linearly related to the outcome (because we're using a *linear* regression model)
+
+Okay, let's get started. Classical variable selection methods include forward selection, backward elimination, and stepwise selection. We'll use stepwise selction in this example.
+
+```{r}
+# Create a full model (using all predictors available) to use.
+full.lm = lm(formula = price ~ ., data = Housing)  # the period is a stand in for 'everything'
+
+# Stepwise regression model (other options include forward selection and backward elimination.)
+# trace-false means I don't need to see all the receipts as it goes through
+step.lm = stepAIC(full.lm, direction = "both", trace = FALSE)
+summary(step.lm)
+
+```
+Our final multiple linear regression model uses more predictors and has an adjusted R-squared value of 0.6664 (which is respectable).
+
+*Note*: We're using the adjusted R-squared because it takes into consideration more variables and therefore doesn't allow for artificial inflation of how well our model fits the data. 
+
+
+## Indicator Variables
+
+An **indicator variable** (called a factor, category, or enumerated type in R) shows the presence of a certain binary or category attribute, such as whether a house has a driveway or a full basement in our Housing data example.
+
+For example, let's compute the mean price by houses with and without driveways, to compare between the two groups. For this task, we can use `group-by` and the pipe syntax.
+
+```{r}
+# Compute mean price by houses with and without driveways.
+Housing %>%
+  group_by(driveway)%>% # Group by houses with and without driveways
+  summarise_at(vars(price),funs(Mean = mean(.,na.rm=TRUE))) # Calculate the mean of each group
+
+```
+Looking at the output table, we see that houses with a driveway have a mean price of approximately 1.5 times that of houses without driveways. This could also be correlated with other factors such as lot size or number of bedrooms, with larger homes having a driveway.
+
+
+## Interaction Terms
+
+An interaction term indicates that the effect of one predictor variable on the response variable is different at different values of the other predictor variable. It is tested by adding an **interaction term** to the model, in which the two predictor variables are multiplied. 
+
+For illustrating the effect of interaction terms, let's use the famous Iris dataset. The Iris dataset contains four measurements (length and width of sepals and petals) of 50 samples of three species of Iris flowers (setosa, virginica and versicolor).
+
+First, we'll load and fit the Iris dataset to a linear regression model.
+```{r}
+# Load Iris data
+data(iris)
+head(iris)
+
+# Use lm() to fit a model for the length of a petal as a function of its width
+petal.lm = lm(Petal.Length ~ Petal.Width, data = iris)
+summary(petal.lm)
+```
+
+Plotting the results, we get:
+```{r}
+# Create a scatter plot of petal length (y) against petal width (x), by species (color)
+ggplot(iris, aes(x=Petal.Width, y=Petal.Length, col=Species)) + 
+  geom_point() +           # Add the data points
+  geom_smooth(method=lm,   # Add the linear regression line to the plot
+              se=FALSE,    # Don't add the confidence region for the regression line
+              fullrange=TRUE)   # Extend he regression lines to the full x axis range
+
+```
+
+The slope of the regression line for the versicolor species is noticeably different than the slope of the regression lines for the other two species. So we may wish to take into consideration the iris species before calculating the petal length from a given petal width. We can do this by adding an interaction term to our linear model.
+
+```{r}
+# Use lm() to fit a model for the length of a petal as a function of its width and include an interaction term between width and species
+interaction.lm = lm(Petal.Length ~ Petal.Width * Species, data = iris)
+summary(interaction.lm)
+
+```
+The adjusted r-squared value for our Iris model with the interaction term is 0.9581, which is an improvement upon the non-interacting model's value of 0.9266!
+
+# Further Questions and Directions
+
+
+- Variable selection. We used only stepwise regression. Further analysis could check out the two other variable selection methods. 
+- We could have plotted out all the different variables against each othe (e.g., using correlation plots to investigate collinearity/interaction)
+
